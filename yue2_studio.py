@@ -851,6 +851,18 @@ def safe_label(name: str, fallback: str) -> str:
     return s
 
 
+def _unlink_wait(p: Path, tries: int = 8, delay: float = 0.12) -> None:
+    """Windows 上文件正被读着（浏览器还在缓冲这一首 / ffprobe 正在探时长）时，`unlink` 会
+    WinError 32。前端删「正在播放的那首」前会先停播卸载，但句柄释放有零点几秒延迟 —— 这里等一下再删。"""
+    for _ in range(tries - 1):
+        try:
+            p.unlink()
+            return
+        except PermissionError:
+            time.sleep(delay)
+    p.unlink()
+
+
 def _pair_stem(stem: str) -> str | None:
     """老产物的配对：`song_<ts>` ↔ `plan_<ts>`（新产物是同名，不需要这一步）。"""
     if stem.startswith("song_"):
@@ -1144,8 +1156,9 @@ def _autotune_system() -> str:
         '"seconds":90,"steps":32,"count":1,"mode":"full",'
         '"lyrics":"[Verse]\\n第一句\\n第二句\\n\\n[Chorus]\\n副歌一句","style_note":"一句中文，说明你为什么这么选"}\n'
         "字段说明：\n"
-        "- name：给这首歌起个**短名字**（2-12 字，跟用户的语言），会当文件名用；"
-        "别带路径、后缀、标点符号。\n"
+        "- name：**先把 lyrics 想好，再从副歌（[Chorus]）那一段里取意起名** —— 歌名要接得住副歌讲的事、"
+        "或者副歌里的核心意象，**不是把用户那句提示词缩写一下**；2-12 字、跟用户的语言，"
+        "会当文件名用；别带路径、后缀、标点符号。\n"
         "- 曲风/人声/乐器/BPM：**逐字**从下面清单里挑；清单里实在没有合适的就给空字符串 \"\"。\n"
         "- seconds：歌曲时长**上限**（10-900 秒）。用户说了时长就按他说的；没说就按歌词量给 90-150。\n"
         "- steps：质量步数（1-80），没说就 32；用户要更精细可以 40-60。\n"
@@ -1153,7 +1166,9 @@ def _autotune_system() -> str:
         "- mode：要不要先出 ABC 乐谱 —— full=出谱、melody=只要旋律、off=不出谱；没说就 full。\n"
         "- lyrics：歌词，按 [Verse] / [Chorus]（需要时 [Bridge] / [Outro]）分段，一行一句；\n"
         "  **语言跟随用户的描述**（中文描述就写中文歌词）；主题、情绪、长短贴着描述来；\n"
-        "  长度别超过 seconds 秒唱得完的量；不要写解释或作者注释。\n"
+        "  长度别超过 seconds 秒唱得完的量；不要写解释或作者注释；\n"
+        "  **纯音乐（人声 = 无人声（纯音乐））时 lyrics 给空字符串 \"\"** ——\n"
+        "  那是「把用户上次留下的歌词清掉」的信号，别替他保留、更别编一段。\n"
         "- style_note：一句话中文，给用户看你为什么这么选。\n"
         "四组预设的合法取值（逐字用，不要自造）：\n" + rows
     )
@@ -1224,7 +1239,9 @@ def normalize_autotune(raw: dict) -> tuple[dict, list[str]]:
     if mode in ("full", "melody", "off"):
         ch["mode"] = mode
     ly = str(raw.get("lyrics") or "").strip()
-    if ly:
+    if "纯音乐" in str(ch.get("人声") or ""):
+        ch["lyrics"] = ""      # 纯音乐：歌词一律清空 —— 上次留下的歌词绝不能混进这次（模型写了也覆盖）
+    elif ly:
         ch["lyrics"] = ly
     nm = re.sub(r"\s+", " ", str(raw.get("name") or "").strip())[:60]
     if nm:
@@ -1580,10 +1597,13 @@ class Handler(BaseHTTPRequestHandler):
                     gone = []
                     for f in _group_files(key):
                         try:
-                            f.unlink()
+                            _unlink_wait(f)
                             gone.append(f.name)
                         except OSError as e:  # noqa: BLE001
-                            return self._fail(500, "io_error", f"删不掉 {f.name}：{e}")
+                            print(f"[delete] {f.name}: {e}", file=sys.stderr, flush=True)
+                            return self._fail(500, "io_error",
+                                              f"删不掉 {f.name}：文件正被占用"
+                                              f"（多半是正在播放它，或被别的程序打开着）—— 停一下再删")
                     with _DUR_LOCK:
                         for n in gone:
                             _DUR_CACHE.pop(n, None)
@@ -1595,9 +1615,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not p.is_file():
                     return self._fail(404, "not_found", "没有这个文件")
                 try:
-                    p.unlink()
+                    _unlink_wait(p)
                 except OSError as e:
-                    return self._fail(500, "io_error", f"删不掉：{e}")
+                    print(f"[delete] {p.name}: {e}", file=sys.stderr, flush=True)
+                    return self._fail(500, "io_error",
+                                      f"删不掉 {p.name}：文件正被占用（正在播放或被别的程序打开着）—— 停一下再删")
                 with _DUR_LOCK:
                     _DUR_CACHE.pop(p.name, None)
                 # 同名的那对产物（歌 + 谱）**一件都不剩**了，才把参数文件也收走 ——

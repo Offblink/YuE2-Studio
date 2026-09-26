@@ -192,6 +192,7 @@
        font-variant-numeric:tabular-nums}
   #ptime .dim{color:var(--faint)}
   #pact{display:flex;gap:10px;margin-top:14px}
+  #btnLoop{min-width:34px;padding-left:0;padding-right:0;line-height:0}   /* 图标按钮：不撑宽 */
 
   /* ---------- 权重提示条 ---------- */
   #warnBar{display:none;align-items:center;gap:10px;margin:0 20px 12px 16px;padding:10px 14px;
@@ -397,6 +398,7 @@
 
       <div id="pact">
         <button class="pill" id="btnDl" disabled>下载</button>
+        <button class="pill" id="btnLoop" title="循环关：播完就停。点一下换模式" aria-label="播放模式：循环关"></button>
       </div>
     </div>
       </div>
@@ -789,6 +791,7 @@ function renderPresets(){
       b.dataset.k = k; b.dataset.v = v;
       b.onclick = () => {
         presetPick[k] = (presetPick[k] === v) ? undefined : v;   // 再点一下 = 取消这组
+        clearLyricsForInstrumental();                            // 选中「纯音乐」= 旧歌词作废
         composeStyle(); paintPresets();
       };
       chips.appendChild(b);
@@ -804,6 +807,13 @@ function paintPresets(){
 function composeStyle(){
   const parts = presetKeys.map(k => presetPick[k]).filter(Boolean);
   if(parts.length){ $('style').value = parts.join(', '); styleCustom = false; }
+}
+/* 纯音乐没有歌词：人声那组选着「…纯音乐」就把上次留下的歌词清掉。
+   点预设 chip 和自动生成走同一条路（服务端 normalize 还会再强制一次 ch.lyrics=""）。 */
+function clearLyricsForInstrumental(){
+  if(/纯音乐/.test(String(presetPick['人声'] || '')) && LYR.value){
+    LYR.value = ''; paintLines();
+  }
 }
 /* 手改那行 = 自定义：**四组的选中态不动**（点亮的还是你上次点的），
    下次点任何一组会按四组**重新拼一次**并覆盖手打的那句 —— 想整行自己写就别再点预设。 */
@@ -879,6 +889,7 @@ async function autoTune(){
       if(Object.prototype.hasOwnProperty.call(ch, k)){ presetPick[k] = ch[k]; said.push(k + '=' + ch[k]); }
     });
     if(said.length) composeStyle();                    // 四组是风格行的唯一出处，重拼一次
+    clearLyricsForInstrumental();                      // 自动填出「纯音乐」→ 旧歌词一并清掉
     if(ch.seconds != null){ stSec.set(ch.seconds); said.push('时长上限=' + ch.seconds + ' 秒'); }
     if(ch.steps   != null){ stSteps.set(ch.steps); said.push('步数=' + ch.steps); }
     if(ch.count   != null){ stCount.set(ch.count); said.push('数量=' + ch.count); }
@@ -886,10 +897,11 @@ async function autoTune(){
       segMode.set(ch.mode);
       said.push('乐谱=' + ({full:'全谱', melody:'只旋律', off:'不出谱'})[ch.mode]);
     }
-    if(ch.lyrics){
+    if(Object.prototype.hasOwnProperty.call(ch, 'lyrics')){   // 空串也算数 = 「清空」
       LYR.value = String(ch.lyrics).replace(/\r\n?/g, '\n');
       paintLines();
-      said.push('歌词 ' + LYR.value.split('\n').filter(x => x.trim()).length + ' 行');
+      const n = LYR.value.split('\n').filter(x => x.trim()).length;
+      said.push(n ? ('歌词 ' + n + ' 行') : '歌词已清空（纯音乐）');
     }
     paintPresets();
     const miss = (r.unmatched || []).length ? '；没对上清单：' + r.unmatched.join('、') : '';
@@ -1138,13 +1150,76 @@ audio.addEventListener('play',  () => {
   if(!rafOn){ rafOn = true; requestAnimationFrame(tick); }
 });
 audio.addEventListener('pause', () => { $('btnPlay').textContent = '▶'; $('btnPlay').classList.remove('on'); });
-audio.addEventListener('ended', () => { $('btnPlay').textContent = '▶'; $('btnPlay').classList.remove('on'); paintProgress(0); });
+audio.addEventListener('ended', () => { $('btnPlay').textContent = '▶'; $('btnPlay').classList.remove('on'); paintProgress(0); playAfterEnd(); });
 audio.addEventListener('loadedmetadata', () => {
   if(audio.duration && isFinite(audio.duration)) $('totT').textContent = fmtClock(audio.duration);
 });
 audio.addEventListener('error', () => {
   if(cur) setMsg('这个文件读不出来（或不是能播的音频）：' + cur);
 });
+
+/* ================= 播放模式（播放条上的循环按钮，四档轮换） =================
+   关 = 播完就停（原行为）；历史循环 = 按「历史」列表从上到下接下一首、尾接头；
+   单曲循环 = 这首反复；随机播放 = 从历史里换一首（列表里只有这一首就重头播）。 */
+const LOOP_MODES = [
+  {key: 'off',     label: '循环关',   title: '播完就停。点一下换模式'},
+  {key: 'all',     label: '历史循环', title: '播完按「历史」列表从上到下接下一首，最后一首接回第一首'},
+  {key: 'one',     label: '单曲循环', title: '这一首反复播'},
+  {key: 'shuffle', label: '随机播放', title: '播完从历史里随机换一首'},
+];
+const LOOP_ICONS = {
+  /* 图标全部自画（inline SVG，currentColor 跟着按钮变色）：关 = 循环加斜杠 */
+  off: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" '
+     + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/>'
+     + '<path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/>'
+     + '<path d="M21 13v2a4 4 0 0 1-4 4H3"/><line x1="4" y1="20" x2="20" y2="4"/></svg>',
+  all: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" '
+     + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/>'
+     + '<path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/>'
+     + '<path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+  one: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" '
+     + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/>'
+     + '<path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/>'
+     + '<path d="M21 13v2a4 4 0 0 1-4 4H3"/><path d="M11.1 10.6L12.7 9.6V15"/></svg>',
+  shuffle: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" '
+     + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/>'
+     + '<path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>',
+};
+let loopIdx = 0;
+function paintLoop(){
+  const m = LOOP_MODES[loopIdx];
+  $('btnLoop').innerHTML = LOOP_ICONS[m.key];            // 图标；文字留在 title / 状态栏 / aria 里
+  $('btnLoop').title = m.label + '：' + m.title;
+  $('btnLoop').setAttribute('aria-label', '播放模式：' + m.label);
+  $('btnLoop').classList.toggle('on', m.key !== 'off');
+}
+$('btnLoop').onclick = () => {
+  loopIdx = (loopIdx + 1) % LOOP_MODES.length;
+  paintLoop();
+  setMsg('播放模式：' + LOOP_MODES[loopIdx].label, true);
+};
+function playableSongs(){ return (songs || []).filter(g => g.song).map(g => g.song); }
+function nextSong(name, mode){
+  const list = playableSongs();
+  if(!list.length) return null;
+  if(mode === 'shuffle'){
+    if(list.length === 1) return list[0];
+    const others = list.filter(n => n !== name);           // 随机但不原地打转
+    return others[Math.floor(Math.random() * others.length)] || list[0];
+  }
+  const i = list.indexOf(name);                            // 历史循环：列表顺序，尾接头
+  return (i < 0) ? list[0] : list[(i + 1) % list.length];
+}
+function playAfterEnd(){
+  const mode = LOOP_MODES[loopIdx].key;
+  if(mode === 'off' || !cur) return;                       // 关 = 原行为，播完就停
+  if(mode === 'one'){ audio.currentTime = 0; playPause(true); return; }
+  const nxt = nextSong(cur, mode);
+  if(!nxt) return;
+  if(nxt === cur){ audio.currentTime = 0; playPause(true); }   // 只有这一首可播
+  else loadSong(nxt, {play: true});
+}
+paintLoop();
 if(window.ResizeObserver) new ResizeObserver(sizeWave).observe(wave);
 window.addEventListener('resize', sizeWave);
 
@@ -1296,6 +1371,15 @@ async function askDelete(it){
     it.stem + '\n' + files.join('\n') + '\n（从 ' + ((S && S.songs_dir) || '产物目录') + ' 里删除，不可恢复）',
     '删除');
   if(!ok) return;
+  const wasCur = (curStem === it.stem);
+  if(wasCur){
+    // 正在播放的这首：先停播、把 src 卸掉 —— 浏览器不再读这个文件，面板那头的文件句柄
+    // 会随连接断开（不然 Windows 上删不掉：WinError 32，实测复现过）。删完下面复位到「还没有歌」。
+    audio.pause();
+    audio.removeAttribute('src');
+    try{ audio.load(); }catch(_){}
+    peaks = null;
+  }
   try{
     await api('/api/delete', {name: it.stem});          // 无后缀 = 这一首的全部产物
     songs = songs.filter(g => g.stem !== it.stem);
@@ -1310,7 +1394,10 @@ async function askDelete(it){
     }
     updateSwitch();
     setMsg('已删除 ' + it.stem, true);
-  }catch(e){ setMsg('删除失败: ' + e.message); }
+  }catch(e){
+    if(wasCur) clearPlayer();                           // 删失败也退回「还没有歌」，别留个按不动的播放器
+    setMsg('删除失败: ' + e.message);
+  }
 }
 
 /* ================= 乐谱页 ================= */
