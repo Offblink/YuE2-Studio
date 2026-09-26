@@ -143,6 +143,22 @@ ComfyUI 侧 `lyrics` 只是 `clip.tokenize(style, lyrics=lyrics, …)` 的字符
 女声+空词 → 400/前端拦截且不发请求；纯音乐+空词 → 全流程真跑通（`mode full`，85.6 s 采样，
 产出 60.0 s 的 `.flac` + `.abc` + 参数 `lyrics: ""`）。歌词页空词时按风格分流：
 风格含纯音乐 → 「纯音乐 —— 这一首没有歌词。」，否则才是原来的「没存参数/纯乐谱条目」。
+**纯音乐 = 官方两段式：写谱 → 人声线搬进乐器轨 → 照转换谱生成**（2026-09-27 用户报
+「纯音乐听着有歌词」，三层证据 + 定案）：
+① `mode=full` 直接生成：ABC 节点拿**空词**也写出 `% verse` 的 Vocal 主旋律（实测 `像素小冒险.abc`），
+音乐节点照谱唱、没词就自己造词 —— 用户耳朵实锤，faster-whisper 转出16段成结构的词（正对照逐字命中）；
+② 改 `off` 不写谱、style 只留 tags：**照样唱** —— 三轮实测（中文 tags / 英文追加 / 官方措辞
+`Instrumental, …, no vocals` 打头）ASR 跨解码文本几乎逐字一致（`lp -0.52~-0.70`），style-only 压不住；
+③ 官方正解（m-a-p/YuE `skills/yue2-music/instrumental/SKILL.md`，MIT）：**规划器写谱 → 把 Vocal
+音符整体搬到 Ins（Vocal 只留休止与和弦）→ 照转换后的谱生成**；转换核心已 vendor 进
+`vendor/yue_instrumental/`（instrumentalize/abc_tools/compile_score/common + LICENSE，纯标准库，
+在 ComfyUI 产的真谱上一次通过：Vocal 剩 0 音符、363 音符全进 Ins、自校验全绿）。
+面板落地：`_parse_params` 给纯音乐的 style 加官方措辞前缀 `Instrumental, no vocals, `、
+**拒绝 mode=off**（明说原因）；`_run_songs` 检出纯音乐 → `_plan_and_convert()` 两段式
+（阶段「乐谱规划中 → 转谱中（人声 → 乐器）→ 采样中」，失败换 seed 重试一次、再失败给人话停住，
+**绝不退回直接生成**）；`graph_song(..., abc_text=)` 把转换谱当字面量喂音乐节点 + PreviewAny
+（落盘 `.abc` 与音频一致）；`normalize_autotune` 对纯音乐强制 `ch.mode="full"`、提示词同步；
+前端 `applyInstrumentalRules` 把乐谱规划从 off 拉回 full 并播报。
 **空状态无框居中**（同日用户口径「占位有点丑，界面中间显示文字、不要框」）：`renderLyrics()` 空分支给
 `#lyricsBox` 挂 `bare` 类 —— 盒子的内凹阴影与 padding 全部关掉、`display:flex` 让那行字**水平垂直都居中**
 （实测 dx/dy=0）；有歌词时摘掉 `bare`，原来的盒子原样回来（来回切歌验过两向）。
@@ -166,13 +182,19 @@ ComfyUI 侧 `lyrics` 只是 `clip.tokenize(style, lyrics=lyrics, …)` 的字符
 同一首的参数在「属性」页随时能翻，创作页清干净更好写下一首。）
 
 **播放台**：`fetch(/song)` → WebAudio `decodeAudioData` → 每 260 段取峰值画柱，解不出来退化成普通进度条。
-**播放模式**（2026-09-27 加，**暂停键右边的圆形按钮** `#btnLoop`（`.pbtn`，和播放键同款）三档轮换：
-历史循环（默认）/ 单曲循环 / 随机播放 —— 按用户裁决**去掉了「循环关」档**，播完永远接着放；
+**播放模式**（2026-09-27 加，**播放条下一行** `#pbtns` 里的圆形按钮三档轮换：
+**上一首 | 播放/暂停 | 下一首 | 播放模式**（模式键在最右，`.pbtn` 46×46 居中一排；
+四钮都没加载歌时 disabled）：历史循环（默认）/ 单曲循环 / 随机播放 —— 按用户裁决**去掉了「循环关」档**，播完永远接着放；
 图标是**自画 inline SVG**（历史 = 循环箭头、单曲 = 循环里带 1、随机 = 交叉箭头，
 `LOOP_ICONS` 里换，档位名放 `title`/`aria-label`/状态栏）：`ended` 之后由
 `playAfterEnd()` 接管 —— 单曲 = `currentTime=0` 重播；历史 = 按 `songs` 的**展示序**
 （新在前）取下一首、尾接头（怎么接见下「接歌不跳页」）；随机 = 从**有音频**的条目里挑一首非当前的
 （列表只有一首就重播）。只有 `it.song` 非空的条目参与接歌（只出过乐谱的卡播不了，跳过）。
+**上一首 / 下一首按钮**（`#btnPrev`/`#btnNext`，同日加）：与自动续播共用 `neighborSong(dir)` ——
+历史循环**和单曲循环**都按列表**顺序**切换（用户口径：单曲档的按钮别被"单曲"绑住），
+随机档**真的随机**（上一首也随机）；点击走 `jumpSong(dir)` → `advanceGroup`（页面不跳），
+只有这一首时 = 重播本首。实测：顺序 next/next/prev 命中列表公式；单曲档 next 仍换歌、prev 回退；
+随机档连点5次落点3种且每必换歌；单曲档伪造 `ended` 仍重播本首（t=1.15 起）。
 **接歌不跳页**（2026-09-27 用户口径：「页面不变，但歌曲切换」—— 歌词页就还是歌词页，内容换新歌的）：
 `playAfterEnd` 走 `advanceGroup(it, play)` 而不是点卡片的 `openGroup` —— `openGroup` 会
 `showMain('music')` 强制跳页；`advanceGroup` 只做 `curStem → loadSong →（当前页是乐谱才）loadAbc
@@ -234,13 +256,16 @@ ComfyUI 侧 `lyrics` 只是 `clip.tokenize(style, lyrics=lyrics, …)` 的字符
 | GET | `/text?name=` | ABC 文本（`text/plain; charset=utf-8`） |
 
 状态机：同一时刻**只跑一个作业**（`count>1` 时循环，`index` 递增），`phase` 走
-`准备中 → 乐谱规划中 → 采样中 → 解码中 → 完成/失败/已取消`（下载任务是 `下载中`）。
+`准备中 → 乐谱规划中 → 采样中 → 解码中 → 完成/失败/已取消`（纯音乐两段式在规划后多一相
+`转谱中（人声 → 乐器）`；下载任务是 `下载中`）。
 作业结束后 `job` 保留到下一次任务开始，`busy` 只在真跑着时非空。
 
 ## 出歌图：怎么把同次生成的乐谱一起取出来
 
 `mode != off` 时 `graph_song()` 除了 `YuE2GenerateABC(24)` 还挂一个 **`PreviewAny(14)`**
 （`{"source":["24",0]}`）。没有它，`/history` 的 `outputs` 里**就没有 `text`** —— 谱拿不到，配对也无从谈起。
+**纯音乐两段式**例外：不提交 `24`，`PreviewAny(14)` 的 `source` 直接挂**转换后的谱字面量**
+（`graph_song(..., abc_text=)`），`/history` 照样有 `text` → 落盘 `.abc` 与音频一致。
 出完歌 `_run_songs()` 把 `outputs` 里的 ABC 写成 **`<同一个 stem>.abc`**（与 `<stem>.flac`、`<stem>.json` 同名），
 前端按 stem 分组 → 这一首自然就有「音乐 / 乐谱 / 属性」三页。`mode=off` 不提交 ABC 节点 ⇒ 没有谱那一页。
 
