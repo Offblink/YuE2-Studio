@@ -143,6 +143,9 @@ ComfyUI 侧 `lyrics` 只是 `clip.tokenize(style, lyrics=lyrics, …)` 的字符
 女声+空词 → 400/前端拦截且不发请求；纯音乐+空词 → 全流程真跑通（`mode full`，85.6 s 采样，
 产出 60.0 s 的 `.flac` + `.abc` + 参数 `lyrics: ""`）。歌词页空词时按风格分流：
 风格含纯音乐 → 「纯音乐 —— 这一首没有歌词。」，否则才是原来的「没存参数/纯乐谱条目」。
+**空状态无框居中**（同日用户口径「占位有点丑，界面中间显示文字、不要框」）：`renderLyrics()` 空分支给
+`#lyricsBox` 挂 `bare` 类 —— 盒子的内凹阴影与 padding 全部关掉、`display:flex` 让那行字**水平垂直都居中**
+（实测 dx/dy=0）；有歌词时摘掉 `bare`，原来的盒子原样回来（来回切歌验过两向）。
 等的时候有**加载动画**（`setAutoBusy(true)`）：按钮里 `::before` 转一个小圈（`@keyframes spin`），
 文字变 **「放弃生成」**、**按钮保持可点**（点它就是 `abortAuto()` → `AbortController.abort()` 丢掉这次请求），
 只锁输入框。**没有**额外那条横条（早期版本在按钮下面加了一条 `#autoBar` 来回滑，被用户否掉了：
