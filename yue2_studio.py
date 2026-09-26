@@ -44,6 +44,13 @@ _NEW_GROUP = 0x00000200 if os.name == "nt" else 0
 ROOT = Path(__file__).resolve().parent
 PAGE = ROOT / "yue2_studio.html"
 VENDOR = ROOT / "vendor"          # 本地内置的前端库（gsap/Flip），由 /vendor/<name>.js 提供
+# 官方纯音乐转换器（m-a-p/YuE `skills/yue2-music/instrumental`，MIT，见 vendor/yue_instrumental/LICENSE）：
+# 把谱里的 Vocal 音符整体搬进 Ins，照**转换后**的谱生成 —— 这才是真的没人声。
+# 依据：off + style-only 压不住人声（2026-09-27 三轮 ASR 实测，官方措辞 style 也照样唱）。
+_YUE_INSTR = ROOT / "vendor" / "yue_instrumental"
+if str(_YUE_INSTR) not in sys.path:
+    sys.path.insert(0, str(_YUE_INSTR))
+from instrumentalize import convert_score as _convert_instrumental  # noqa: E402
 
 PANEL_PORT = int(os.environ.get("YUE2_PANEL_PORT", "8190"))
 COMFY_PORT = int(os.environ.get("YUE2_COMFY_PORT", "8188"))
@@ -259,12 +266,20 @@ def _abc_inputs(style: str, lyrics: str, seed: int, mode: str) -> dict:
             "repetition_penalty": 1.005, "penalty_window": 100}
 
 
-def graph_song(style: str, lyrics: str, seconds: float, seed: int, steps: int, mode: str) -> dict:
-    """出歌图。mode=off 的语义 = 不提交 ABC 节点、abc 给空串（节点自己吃这个语义），
-    YuE2GenerateMusic 的 mode 走 full（YuE2 的 mode 只有 full/melody，没有 off）。"""
+def graph_song(style: str, lyrics: str, seconds: float, seed: int, steps: int, mode: str,
+               abc_text: str | None = None) -> dict:
+    """出歌图。
+    - `abc_text`（纯音乐两段式）= **已经转成器乐**的谱：字面量直接喂音乐节点，不再跑 ABC 节点；
+      PreviewAny 挂同一份文本 → 落盘的 .abc 与音频一致。
+    - mode=off 的语义 = 不提交 ABC 节点、abc 给空串（节点自己吃这个语义），
+      YuE2GenerateMusic 的 mode 走 full（YuE2 的 mode 只有 full/melody，没有 off）。"""
     g: dict = {"15": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": CKPT_NAME}}}
-    if mode == "off":
-        abc_ref: object = ""
+    if abc_text is not None:
+        g["14"] = {"class_type": "PreviewAny", "inputs": {"source": abc_text}}
+        abc_ref: object = abc_text
+        music_mode = mode if mode in ("full", "melody") else "full"
+    elif mode == "off":
+        abc_ref = ""
         music_mode = "full"
     else:
         g["24"] = {"class_type": "YuE2GenerateABC", "inputs": _abc_inputs(style, lyrics, seed, mode)}
@@ -995,6 +1010,32 @@ def _submit_wait(job: dict, graph: dict, timeout: float) -> tuple[dict, float]:
         return entry, time.time() - t0
 
 
+def _plan_and_convert(job: dict, p: dict, seed: int) -> str:
+    """纯音乐两段式的第一段：规划器写谱 → 官方 Vocal→Ins 转换（m-a-p/YuE instrumental，MIT）。
+    按官方口径：规划/解析失败**换 seed 重试一次**，再失败就给人话停住 —— 绝不退回
+    「不写谱直接生成」那条路（模型会自己唱出词：2026-09-27 三轮 ASR 实测，官方措辞 style 也压不住）。"""
+    last: Exception | None = None
+    for attempt in range(2):
+        if job.get("cancel"):
+            raise _Cancelled()
+        _set_phase(job, "乐谱规划中", force=True)
+        s = seed if attempt == 0 else random.randint(0, 2 ** 31 - 2)
+        try:
+            entry, _w = _submit_wait(job, graph_plan(p["style"], p["lyrics"], s, p["mode"]), timeout=600.0)
+            raw = _entry_text(entry)
+            if not raw or not raw.strip():
+                raise RuntimeError("规划器没给出乐谱文本")
+            _set_phase(job, "转谱中（人声 → 乐器）", force=True)
+            converted, _check = _convert_instrumental(raw)
+            return converted
+        except _Cancelled:
+            raise
+        except Exception as e:  # noqa: BLE001 —— 换个 seed 再来一次（官方口径）
+            last = e
+            print(f"[instrumental] 第 {attempt + 1} 次写谱/转谱失败：{e}", file=sys.stderr, flush=True)
+    raise RuntimeError(f"这首的谱子转不成器乐形态（{last}）—— 再点一次试试") from None
+
+
 def _run_songs(job: dict, p: dict) -> None:
     seed0 = int(p["seed"])
     for i in range(int(p["count"])):
@@ -1006,7 +1047,9 @@ def _run_songs(job: dict, p: dict) -> None:
         job["peak_mib"] = None
         _set_phase(job, "准备中", force=True)
         seed = (seed0 + i) if seed0 >= 0 else random.randint(0, 2 ** 31 - 2)
-        g = graph_song(p["style"], p["lyrics"], p["seconds"], seed, p["steps"], p["mode"])
+        # 纯音乐两段式：先写谱 → 官方转换（Vocal 搬进 Ins）→ 照转换后的谱生成（唱的才真的没有）
+        abc_text = _plan_and_convert(job, p, seed) if "纯音乐" in p["style"] else None
+        g = graph_song(p["style"], p["lyrics"], p["seconds"], seed, p["steps"], p["mode"], abc_text=abc_text)
         entry, wall = _submit_wait(job, g, timeout=1800.0)
         src = _entry_audio(entry)
         if src is None or not src.is_file():
@@ -1113,11 +1156,20 @@ def _parse_params(body: dict, plan: bool = False) -> dict:
     label = re.sub(r"\s+", " ", str(body.get("name") or "").strip())[:60]
     if not style:
         raise ValueError("风格不能为空")
+    # 纯音乐：style 用官方措辞打头（m-a-p/YuE 示例 `Instrumental, …, no vocals`），
+    # 但真正去掉人声靠「写谱 → Vocal 搬进 Ins → 照转换谱生成」；style-only 压不住（3 轮 ASR 实测）。
+    if "纯音乐" in style and "instrumental" not in style.lower():
+        style = "Instrumental, no vocals, " + style
     if not lyrics.strip() and "纯音乐" not in style:
         raise ValueError("歌词不能为空（出纯音乐就把人声点成「无人声（纯音乐）」，歌词不用填）")
     mode = str(body.get("mode") or "full").strip().lower()
     if mode not in ("full", "melody", "off"):
         raise ValueError("mode 只能是 full / melody / off")
+    # 纯音乐必须走两段式（官方 instrumental 流程）：先写谱，再把人声谱线搬进乐器轨。
+    # off = 不写谱直接生成 —— 模型照样会唱出词（实测：连官方措辞的 style 都压不住）。
+    if not plan and "纯音乐" in style and mode == "off":
+        raise ValueError("纯音乐不能选「不出谱 off」—— 面板要先写谱、再把人声谱线搬进乐器轨"
+                         "（唱的才真的没有）。把乐谱规划切到「全谱 full」再生成")
     try:
         seed = int(body.get("seed", -1))
     except (TypeError, ValueError):
@@ -1164,6 +1216,8 @@ def _autotune_system() -> str:
         "- steps：质量步数（1-80），没说就 32；用户要更精细可以 40-60。\n"
         "- count：出几首（1-4），没说就 1。\n"
         "- mode：要不要先出 ABC 乐谱 —— full=出谱、melody=只要旋律、off=不出谱；没说就 full。\n"
+        "  **纯音乐（人声 = 无人声（纯音乐））时 mode 给 \"full\"（必须写谱）** ——\n"
+        "  面板会把谱里的人声旋律搬进乐器轨再生成，这样唱的才真的没有；off 直接生成会唱出词来。\n"
         "- lyrics：歌词，按 [Verse] / [Chorus]（需要时 [Bridge] / [Outro]）分段，一行一句；\n"
         "  **语言跟随用户的描述**（中文描述就写中文歌词）；主题、情绪、长短贴着描述来；\n"
         "  长度别超过 seconds 秒唱得完的量；不要写解释或作者注释；\n"
@@ -1241,6 +1295,7 @@ def normalize_autotune(raw: dict) -> tuple[dict, list[str]]:
     ly = str(raw.get("lyrics") or "").strip()
     if "纯音乐" in str(ch.get("人声") or ""):
         ch["lyrics"] = ""      # 纯音乐：歌词一律清空 —— 上次留下的歌词绝不能混进这次（模型写了也覆盖）
+        ch["mode"] = "full"    # 且必须写谱：面板会把谱里的人声搬进乐器轨再生成（off 直接生成会唱出词）
     elif ly:
         ch["lyrics"] = ly
     nm = re.sub(r"\s+", " ", str(raw.get("name") or "").strip())[:60]

@@ -165,6 +165,7 @@
   #waveWrap.fallback #wave{display:none}
   #waveWrap.fallback #waveFb{display:flex}
   #prow{display:flex;align-items:center;gap:12px}
+  #pbtns{display:flex;justify-content:center;align-items:center;gap:12px;margin-top:14px}   /* 四钮一排，居中 */
   #pcol{flex:1;min-width:0}
   .pbtn{width:46px;height:46px;flex:0 0 46px;border-radius:99px;font-size:14px;line-height:1;
        color:var(--accent-2);box-shadow:6px 6px 13px var(--sh-d),-6px -6px 13px var(--sh-l)}
@@ -397,14 +398,19 @@
       </div>
 
       <div id="prow">
-        <button class="pbtn" id="btnPlay" disabled title="播放 / 暂停">▶</button>
-        <button class="pbtn on" id="btnLoop" title="历史循环" aria-label="播放模式：历史循环"></button>
         <div id="pcol">
           <div id="pbar"><i id="pfill"></i><i id="pknob"></i></div>
           <div id="ptime">
             <span id="curT">0:00</span><span class="dim">/</span><span id="totT">0:00</span>
           </div>
         </div>
+      </div>
+      <!-- 四个圆钮整排下移到播放条的下一行：上一首 | 播放/暂停 | 下一首 | 播放模式 -->
+      <div id="pbtns">
+        <button class="pbtn" id="btnPrev" disabled title="上一首" aria-label="上一首"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19.5 5.5 9 12l10.5 6.5z"/><rect x="4.5" y="5.5" width="2.8" height="13" rx="1.2"/></svg></button>
+        <button class="pbtn" id="btnPlay" disabled title="播放 / 暂停">▶</button>
+        <button class="pbtn" id="btnNext" disabled title="下一首" aria-label="下一首"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M4.5 5.5 15 12l-10.5 6.5z"/><rect x="16.7" y="5.5" width="2.8" height="13" rx="1.2"/></svg></button>
+        <button class="pbtn on" id="btnLoop" title="历史循环" aria-label="播放模式：历史循环"></button>
       </div>
     </div>
       </div>
@@ -796,7 +802,7 @@ function renderPresets(){
       b.dataset.k = k; b.dataset.v = v;
       b.onclick = () => {
         presetPick[k] = (presetPick[k] === v) ? undefined : v;   // 再点一下 = 取消这组
-        clearLyricsForInstrumental();                            // 选中「纯音乐」= 旧歌词作废
+        applyInstrumentalRules(true);                            // 选中「纯音乐」= 清旧歌词 + 切掉乐谱
         composeStyle(); paintPresets();
       };
       chips.appendChild(b);
@@ -813,11 +819,16 @@ function composeStyle(){
   const parts = presetKeys.map(k => presetPick[k]).filter(Boolean);
   if(parts.length){ $('style').value = parts.join(', '); styleCustom = false; }
 }
-/* 纯音乐没有歌词：人声那组选着「…纯音乐」就把上次留下的歌词清掉。
-   点预设 chip 和自动生成走同一条路（服务端 normalize 还会再强制一次 ch.lyrics=""）。 */
-function clearLyricsForInstrumental(){
-  if(/纯音乐/.test(String(presetPick['人声'] || '')) && LYR.value){
-    LYR.value = ''; paintLines();
+/* 纯音乐的两条硬规则（点预设 chip 与自动填共用；服务端 normalize 还会再兜一次）：
+   ① 上次留下的歌词清掉；② 乐谱规划从 off 拉回 full —— 面板要**先写谱、再把人声谱线搬进
+   乐器轨**（官方 instrumental 流程）；直接生成（off）模型会自己唱出词（2026-09-27 三轮 ASR 实测）。 */
+function applyInstrumentalRules(announce){
+  if(!/纯音乐/.test(String(presetPick['人声'] || ''))) return;
+  const did = [];
+  if(LYR.value){ LYR.value = ''; paintLines(); did.push('歌词清空'); }
+  if(segMode.get() === 'off'){ segMode.set('full'); did.push('乐谱规划 → 全谱（写谱后转器乐谱）'); }
+  if(did.length && announce){
+    setMsg('纯音乐：' + did.join('、') + ' —— 谱照出，唱的没有', true);
   }
 }
 /* 手改那行 = 自定义：**四组的选中态不动**（点亮的还是你上次点的），
@@ -894,7 +905,7 @@ async function autoTune(){
       if(Object.prototype.hasOwnProperty.call(ch, k)){ presetPick[k] = ch[k]; said.push(k + '=' + ch[k]); }
     });
     if(said.length) composeStyle();                    // 四组是风格行的唯一出处，重拼一次
-    clearLyricsForInstrumental();                      // 自动填出「纯音乐」→ 旧歌词一并清掉
+    applyInstrumentalRules(false);                     // 自动填出「纯音乐」→ 旧歌词清掉、乐谱切 off（消息并进已填好）
     if(ch.seconds != null){ stSec.set(ch.seconds); said.push('时长上限=' + ch.seconds + ' 秒'); }
     if(ch.steps   != null){ stSteps.set(ch.steps); said.push('步数=' + ch.steps); }
     if(ch.count   != null){ stCount.set(ch.count); said.push('数量=' + ch.count); }
@@ -987,6 +998,7 @@ function clearPlayer(){
   $('npName').title = '';
   $('npMeta').textContent = '在右边「创作」页写词出歌，或去「历史」页点一首';
   $('btnPlay').disabled = true; $('btnPlay').classList.remove('on', 'attn');
+  $('btnPrev').disabled = true; $('btnNext').disabled = true;
   $('curT').textContent = '0:00'; $('totT').textContent = '0:00';
   $('waveWrap').classList.remove('fallback');
   $('waveWrap').title = '点或拖这条也能跳着听';
@@ -1009,6 +1021,7 @@ function loadSong(name, opt){
   $('npName').classList.remove('ph');
   $('npMeta').textContent = '';
   $('btnPlay').disabled = false;
+  $('btnPrev').disabled = false; $('btnNext').disabled = false;
   $('btnPlay').classList.remove('on');
   $('totT').textContent = fmtClock(songSeconds(name));
   $('waveWrap').classList.remove('fallback');
@@ -1153,7 +1166,7 @@ audio.addEventListener('error', () => {
   if(cur) setMsg('这个文件读不出来（或不是能播的音频）：' + cur);
 });
 
-/* ================= 播放模式（暂停键右边的圆形按钮，三档轮换） =================
+/* ================= 播放模式（播放条下一行、下一首右边的圆形按钮，三档轮换） =================
    历史循环 = 按「历史」列表从上到下接下一首、尾接头（默认）；单曲循环 = 这首反复；
    随机播放 = 从历史里换一首（列表里只有这一首就重头播）。没有「关」档 —— 播完永远接着放。 */
 const LOOP_MODES = [
@@ -1189,27 +1202,35 @@ $('btnLoop').onclick = () => {
   setMsg('播放模式：' + LOOP_MODES[loopIdx].label, true);
 };
 function playableSongs(){ return (songs || []).filter(g => g.song).map(g => g.song); }
-function nextSong(name, mode){
+/* 上/下一首要去哪（用户口径 2026-09-27）：历史循环**和单曲循环**都按列表顺序切换；
+   随机播放则真的随机挑一首别的（上一首也随机 —— 这个模式里没有"上一步"可言）。
+   dir = +1 下一首 / -1 上一首；列表尾接头、头接尾。 */
+function neighborSong(dir){
   const list = playableSongs();
   if(!list.length) return null;
-  if(mode === 'shuffle'){
+  if(LOOP_MODES[loopIdx].key === 'shuffle'){
     if(list.length === 1) return list[0];
-    const others = list.filter(n => n !== name);           // 随机但不原地打转
+    const others = list.filter(n => n !== cur);
     return others[Math.floor(Math.random() * others.length)] || list[0];
   }
-  const i = list.indexOf(name);                            // 历史循环：列表顺序，尾接头
-  return (i < 0) ? list[0] : list[(i + 1) % list.length];
+  const i = list.indexOf(cur);
+  if(i < 0) return dir > 0 ? list[0] : list[list.length - 1];
+  return list[(i + dir + list.length) % list.length];
 }
-function playAfterEnd(){
-  if(!cur) return;                                       // 没有「关」档：播完永远接着放
-  const mode = LOOP_MODES[loopIdx].key;
-  if(mode === 'one'){ audio.currentTime = 0; playPause(true); return; }
-  const nxt = nextSong(cur, mode);
+function jumpSong(dir){
+  const nxt = neighborSong(dir);
   if(!nxt) return;
   if(nxt === cur){ audio.currentTime = 0; playPause(true); return; }   // 只有这一首可播
   const it = songItem(nxt);
-  if(it) advanceGroup(it, true);                         // 页面不跳，歌词/属性/谱换成新歌的
+  if(it) advanceGroup(it, true);      // 和接歌一样：页面不跳，选中/歌词/属性/谱换新
   else loadSong(nxt, {play: true});
+}
+$('btnNext').onclick = () => jumpSong(1);
+$('btnPrev').onclick = () => jumpSong(-1);
+function playAfterEnd(){
+  if(!cur) return;                                       // 没有「关」档：播完永远接着放
+  if(LOOP_MODES[loopIdx].key === 'one'){ audio.currentTime = 0; playPause(true); return; }
+  jumpSong(1);   // 历史循环=顺序接下一首、随机=真随机，与按钮共用 neighborSong（只有单曲的"自动续播"仍是重播本首）
 }
 paintLoop();
 if(window.ResizeObserver) new ResizeObserver(sizeWave).observe(wave);
