@@ -1,4 +1,4 @@
-# Yue Studio（独立面板）
+# YuE2 Studio（独立面板）
 
 面板 = 「写风格 + 歌词 + 歌名 → 出歌 / 出 ABC 乐谱 → 试听 + 历史管理」的那层 WebUI，**与模型/ComfyUI 解耦**：
 不 import ComfyUI 的任何东西、不用它的 venv、不假设它就在隔壁。全部实测记录（2026-09-26）。
@@ -17,34 +17,34 @@
 
 | studio.json | 环境变量 | 默认 | 说明 |
 |---|---|---|---|
-| `comfy_root` | `YUE_COMFY_ROOT` | `<面板>\ComfyUI` | ComfyUI 根目录；**相对路径按面板目录解析** |
-| `output_dir` | `YUE_OUTPUT_DIR` | `<comfy_root>\output` | ComfyUI 原始落点（`output\audio\` 的 flac） |
-| `songs_dir` | `YUE_SONGS_DIR` | `<output_dir>\music` | **产物目录**：历史读这儿、新歌拷这儿 |
-| `comfy_python` | `YUE_COMFY_PYTHON` | `<comfy_root>\.venv\Scripts\python.exe` | 拉起 ComfyUI 用的解释器 |
-| `comfy_log` | `YUE_COMFY_LOG` | `<comfy_root>\comfy_server.log` | 拉起时它的 stdout；同时读 `.err`（文件名随启动器，见下） |
+| `comfy_root` | `YUE2_COMFY_ROOT` | `<面板>\ComfyUI` | ComfyUI 根目录；**相对路径按面板目录解析** |
+| `output_dir` | `YUE2_OUTPUT_DIR` | `<comfy_root>\output` | ComfyUI 原始落点（`output\audio\` 的 flac） |
+| `songs_dir` | `YUE2_SONGS_DIR` | `<output_dir>\music` | **产物目录**：历史读这儿、新歌拷这儿 |
+| `comfy_python` | `YUE2_COMFY_PYTHON` | `<comfy_root>\.venv\Scripts\python.exe` | 拉起 ComfyUI 用的解释器 |
+| `comfy_log` | `YUE2_COMFY_LOG` | `<comfy_root>\comfy_server.log` | 拉起时它的 stdout；同时读 `.err`（文件名随启动器，见下） |
 | `comfy_cmd` | — | `["main.py","--listen","127.0.0.1","--port",<comfy_port>]` | 相对 `comfy_root` 执行 |
-| `comfy_autostart` | `YUE_COMFY_AUTOSTART` | `true` | `false` = 面板只当前端，绝不自己拉服务 |
+| `comfy_autostart` | `YUE2_COMFY_AUTOSTART` | `true` | `false` = 面板只当前端，绝不自己拉服务 |
 | `presets` | — | 内置四组中文预设 | 创作页 `曲风 / 人声 / 乐器 / BPM` 的清单 |
-| `llm`（可选） | `YUE_LLM_*` | 无 | **自动生成**用的大模型（见下） |
-| — | `YUE_PANEL_PORT` | `8190` | 面板端口（画布 8189、ComfyUI 8188） |
-| — | `YUE_COMFY_PORT` | `8188` | ComfyUI 端口 |
-| — | `YUE_PYTHON` | 面板 `.venv` → 系统 Python | 起面板用的解释器（`yue_studio.ps1` 读） |
+| `llm`（可选） | `YUE2_LLM_*` | 无 | **自动生成**用的大模型（见下） |
+| — | `YUE2_PANEL_PORT` | `8190` | 面板端口（画布 8189、ComfyUI 8188） |
+| — | `YUE2_COMFY_PORT` | `8188` | ComfyUI 端口 |
+| — | `YUE2_PYTHON` | 面板 `.venv` → 系统 Python | 起面板用的解释器（`yue2_studio.ps1` 读） |
 
-命令行 `yue_studio.py --port N` 优先级最高；`--print-config` 打印解析后的全部配置后退出。
+命令行 `yue2_studio.py --port N` 优先级最高；`--print-config` 打印解析后的全部配置后退出。
 
 **命名**：项目原来叫 `qwen-music`、环境变量 `QWEN_*`，2026-09-26 改掉 —— 出歌的是 YuE2，跟 Qwen 无关。
 现在仓库里 `qwen` 只出现在**姊妹项目 Qwen-canvas**（同门那套设计语言）的引用里；
 `comfy_log` 默认取 `<comfy_root>\comfy_server.log`，你的启动器若写别的日志名，把那路径写进 `studio.json` 就行。
-**WebUI 品牌只留英文 `Yue Studio`**，入口文件名 `打开乐坊.cmd` 与目录名保持中文。
+**WebUI 品牌只留英文 `YuE2 Studio`**，入口文件名 `打开乐坊.cmd` 与目录名保持中文。
 
 ## 目录与入口
 
 ```
 <仓库根>\
-├── 打开乐坊.cmd / yue_studio.ps1    起面板 + 开浏览器（-NoBrowser 只起；-Stop 只停面板，**不碰 ComfyUI**）
+├── 打开乐坊.cmd / yue2_studio.ps1    起面板 + 开浏览器（-NoBrowser 只起；-Stop 只停面板，**不碰 ComfyUI**）
 ├── studio.json(.example)             指向哪份 ComfyUI、产物放哪儿、presets、llm（本机那份已 gitignore）
-├── yue_studio.py                     面板服务（**纯标准库**：http.server + urllib + socket + threading）
-├── yue_studio.html                   面板前端（单文件、无框架、无构建）
+├── yue2_studio.py                     面板服务（**纯标准库**：http.server + urllib + socket + threading）
+├── yue2_studio.html                   面板前端（单文件、无框架、无构建）
 ├── vendor\gsap.min.js / Flip.min.js  动效库，**随仓内置、不连 CDN**
 └── MUSIC_NOTES.md                    本文件（面板口径）
 ```
@@ -132,7 +132,7 @@
 状态栏「已放弃这次自动生成 —— 参数一个都没改」、歌名与歌词**都没被填**（`ERR_ABORTED` 就是那一下）；
 紧接着完整跑一次仍正常（33.4 s，歌名 + 四组 + 12 行歌词都到位）。注意**服务端那次上游调用会跑完**（只是结果被丢掉）。
 `llm` 段：`base_url / model / api_key_env / proxy / timeout / max_tokens`（**任何 OpenAI 兼容端点**都行）。
-**api_key 不写进 studio.json**：先看环境变量 `api_key_env`（默认 `YUE_LLM_API_KEY`，也认 `YUE_LLM_API_KEY`），
+**api_key 不写进 studio.json**：先看环境变量 `api_key_env`（默认 `YUE2_LLM_API_KEY`，也认 `YUE2_LLM_API_KEY`），
 读不到再去 Windows 注册表里找同名用户变量。三样（端点 + 模型名 + key）缺哪样，`/api/state.llm.why` 就说哪样，
 前端把这句话写进那一格的副标题、并把两个控件禁用 —— 出歌链路零影响。
 
@@ -177,7 +177,7 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/` | `yue_studio.html`（每次读盘，改 html 不用重启） |
+| GET | `/` | `yue2_studio.html`（每次读盘，改 html 不用重启） |
 | GET | `/vendor/<name>.js` | `vendor\` 下的裸 `.js`（防穿越） |
 | GET | `/api/state` | 在线状态 / 版本 / `autostart` / `ckpt` / `gpu` / **`presets`** / **`llm`** / `songs`（**一首一项**，见上） / `busy` / `songs_dir` |
 | GET | `/api/status` | `job`（跑完也留着，前端读结果与错误）+ `queue.pending` + `download` |
@@ -210,7 +210,7 @@
 
 | 项 | 值 |
 |---|---|
-| 实测配置 | 任何 OpenAI 兼容端点（`POST <base_url>/chat/completions`）：`base_url` / `model` 填 studio.json，**key 走环境变量**（默认 `YUE_LLM_API_KEY`，Windows 上读不到还会去注册表找同名用户变量）；需要的话 `proxy` 单独给（本机服务之间的调用不走代理） |
+| 实测配置 | 任何 OpenAI 兼容端点（`POST <base_url>/chat/completions`）：`base_url` / `model` 填 studio.json，**key 走环境变量**（默认 `YUE2_LLM_API_KEY`，Windows 上读不到还会去注册表找同名用户变量）；需要的话 `proxy` 单独给（本机服务之间的调用不走代理） |
 | 延迟 | **53–56 s**（思考型模型；按钮变「想好了…」） |
 | 提交前校验 | 四组值**必须逐字落在 `presets` 清单里**，否则丢掉并进 `unmatched`（前端提示「没对上清单」）；`seconds 10-900`、`steps 1-80`、`count 1-4`、`mode` 白名单全部夹逼 |
 | 不碰 GPU | 调完 `/api/state` 的 `busy` 仍是 `null`，ComfyUI 一次请求都没收到 |
@@ -239,7 +239,7 @@
 - 删除链路：自绘确认框 → `Esc` 取消留文件 → 确认删盘上文件，历史少一张。
 - 守卫：忙 → 409、空歌词 → 400、`../music.json`/`x.txt`/空名 → 404 非法文件名、`Range` → 206。
 
-## 改代码时踩过的坑（改 `yue_studio.html` / `.py` 前必读）
+## 改代码时踩过的坑（改 `yue2_studio.html` / `.py` 前必读）
 
 1. **按 marker 切片重建 DOM 结构时，必须断言"关键 id 都在"**：2026-09-26 把布局从「左播放台 + 右三页签」
    改成「主区 2/3 + 侧栏 1/3」时，切片取了 `workbar` 和 `pages`，**中间的 `#tabs` 整块被落下** ——
@@ -254,11 +254,11 @@
 5. 含中文的 `.ps1` 必须 **UTF-8 + BOM**、`.cmd` 必须**纯 ASCII + CRLF**；从 cmd 里调这些 `.cmd` 时给 stdin 喂 NUL。
 6. **两个面板能同时 bind 8190**（Windows + `allow_reuse_address`）→ 你改完起来看着是新的，
    答话的却可能是那个老进程（实测：`/api/state` 一直给老行为）。`main()` 现在**先探 `/api/state`**，
-   有人在答就直接退出 1；停面板用 `yue_studio.ps1 -Stop`（它按 `CommandLine like '*yue_studio.py*'` 找进程）。
+   有人在答就直接退出 1；停面板用 `yue2_studio.ps1 -Stop`（它按 `CommandLine like '*yue2_studio.py*'` 找进程）。
 7. **大模型的 key 不一定在自己的进程环境里**：`setx`/用户变量写的是注册表，比它更早起来的 shell
    （或服务方式起的进程）继承不到 → 面板把「自动生成」禁用了，而用户觉得"我明明配了"。
    `_llm_key()` 现在**环境变量 → 注册表**（`HKCU\Environment`，再 `HKLM\...\Session Manager\Environment`）两级找。
-   实测：`env -u YUE_LLM_API_KEY python -c "import yue_studio; print(yue_studio.llm_ready())"` → `True`。
+   实测：`env -u YUE2_LLM_API_KEY python -c "import yue2_studio; print(yue2_studio.llm_ready())"` → `True`。
    `llm_ready()` 现在要求**端点 + 模型名 + key 三样齐**（默认全是空 = 不挑厂商），缺哪样由 `llm_why()` 说明。
 8. **改名的撞名判据必须按"分组 key"，不能只看文件名**：`song_<ts>.flac` / `plan_<ts>.abc`（老命名）
    与 `<ts>.flac`（新命名）**是同一首**（`_pair_key()` 归一到 `<ts>`）。第一版只查 `<new>.flac/.abc/.json`

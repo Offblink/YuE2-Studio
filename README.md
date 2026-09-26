@@ -1,4 +1,4 @@
-# Yue Studio
+# YuE2 Studio
 
 本地 YuE2 出歌的**画布式面板**：写风格 + 歌词 + 歌名 → **出歌 / 出 ABC 乐谱** → 主区直接试听（真波形、可拖进度），
 同一首还能翻到**歌词**和**属性**（这一首用的全部输入与产出）。历史里**一首歌一张卡**，随手翻、随手删。
@@ -39,11 +39,11 @@ copy studio.json.example studio.json      REM 改成你的 ComfyUI 路径（相�
 打开乐坊.cmd                              REM → http://127.0.0.1:8190
 ```
 
-停面板：`powershell -File yue_studio.ps1 -Stop`（只杀面板，**不碰 ComfyUI**）。
+停面板：`powershell -File yue2_studio.ps1 -Stop`（只杀面板，**不碰 ComfyUI**）。
 点「生成」时面板会把 ComfyUI 拉起来（`comfy_autostart: false` 就只当前端），
 **停 ComfyUI 归你自己的那套停法**（面板只管起，不管停）。
 
-不用建 venv：服务端只用标准库，启动时按 `YUE_PYTHON` → 面板目录下的 `.venv` → 系统 Python 的顺序找解释器。
+不用建 venv：服务端只用标准库，启动时按 `YUE2_PYTHON` → 面板目录下的 `.venv` → 系统 Python 的顺序找解释器。
 
 ## 界面
 
@@ -92,25 +92,25 @@ copy studio.json.example studio.json      REM 改成你的 ComfyUI 路径（相�
 
 ## 配置
 
-优先级 **环境变量 `YUE_<KEY>` > 同目录 `studio.json` > 默认值**；相对路径按面板目录解析。
+优先级 **环境变量 `YUE2_<KEY>` > 同目录 `studio.json` > 默认值**；相对路径按面板目录解析。
 
 | studio.json | 环境变量 | 默认 | 作用 |
 |---|---|---|---|
-| `comfy_root` | `YUE_COMFY_ROOT` | `<面板>\ComfyUI` | ComfyUI 根目录 |
-| `output_dir` | `YUE_OUTPUT_DIR` | `<comfy_root>\output` | ComfyUI 原始落点（中转） |
-| `songs_dir` | `YUE_SONGS_DIR` | `<output_dir>\music` | **产物目录**（历史列表读这儿） |
-| `comfy_python` | `YUE_COMFY_PYTHON` | `<comfy_root>\.venv\Scripts\python.exe` | 拉起 ComfyUI 用的解释器 |
-| `comfy_log` | `YUE_COMFY_LOG` | `<comfy_root>\comfy_server.log` | 拉起时它的输出（**日志文件名随你的启动器**：面板自己拉起时写这个名，你用别的启动器起的就把它的日志路径写这儿） |
+| `comfy_root` | `YUE2_COMFY_ROOT` | `<面板>\ComfyUI` | ComfyUI 根目录 |
+| `output_dir` | `YUE2_OUTPUT_DIR` | `<comfy_root>\output` | ComfyUI 原始落点（中转） |
+| `songs_dir` | `YUE2_SONGS_DIR` | `<output_dir>\music` | **产物目录**（历史列表读这儿） |
+| `comfy_python` | `YUE2_COMFY_PYTHON` | `<comfy_root>\.venv\Scripts\python.exe` | 拉起 ComfyUI 用的解释器 |
+| `comfy_log` | `YUE2_COMFY_LOG` | `<comfy_root>\comfy_server.log` | 拉起时它的输出（**日志文件名随你的启动器**：面板自己拉起时写这个名，你用别的启动器起的就把它的日志路径写这儿） |
 | `comfy_cmd` | — | `["main.py","--listen","127.0.0.1","--port",<comfy_port>]` | 相对 `comfy_root` 执行 |
-| `comfy_autostart` | `YUE_COMFY_AUTOSTART` | `true` | `false` = 面板绝不自己拉 ComfyUI |
+| `comfy_autostart` | `YUE2_COMFY_AUTOSTART` | `true` | `false` = 面板绝不自己拉 ComfyUI |
 | `presets` | — | 内置四组中文预设 | 创作页的 `曲风/人声/乐器/BPM` 清单 |
-| `llm`（可选） | `YUE_LLM_*` | 无 | **自动生成**用的大模型：`base_url` / `model` / `api_key_env` / `proxy` / `timeout` / `max_tokens` |
-| — | `YUE_PANEL_PORT` | `8190` | 面板端口 |
-| — | `YUE_COMFY_PORT` | `8188` | ComfyUI 端口 |
+| `llm`（可选） | `YUE2_LLM_*` | 无 | **自动生成**用的大模型：`base_url` / `model` / `api_key_env` / `proxy` / `timeout` / `max_tokens` |
+| — | `YUE2_PANEL_PORT` | `8190` | 面板端口 |
+| — | `YUE2_COMFY_PORT` | `8188` | ComfyUI 端口 |
 
 **api_key 不写进 `studio.json`**：面板按 `llm.api_key_env` 指定的变量名去**环境变量**里找
 （Windows 上读不到还会去注册表里找同名用户变量，所以 `setx` 配过一次就一直有效），
-找不到就禁用「自动生成」并说明缺什么。`YUE_LLM_API_KEY` 这个名字总能兜底。
+找不到就禁用「自动生成」并说明缺什么。`YUE2_LLM_API_KEY` 这个名字总能兜底。
 
 ## 实测
 
@@ -134,14 +134,14 @@ copy studio.json.example studio.json      REM 改成你的 ComfyUI 路径（相�
 - 单人本地工具：**没有登录鉴权**，面板能删产物目录里的文件 —— **别往公网暴露**。
 - **自动生成会把你的提示词发给 `llm` 配置的服务商**；不想要就别配 `llm`，这一格会自动禁用。
 - 出歌权重是 **CC-BY-NC-4.0（非商用）**，选权重前先确认授权。
-- 起停包装是 PowerShell（Windows）；面板本体跨平台（`python yue_studio.py`）。
+- 起停包装是 PowerShell（Windows）；面板本体跨平台（`python yue2_studio.py`）。
 
 ## 目录
 
 ```
-打开乐坊.cmd / yue_studio.ps1     起面板 + 开浏览器（-NoBrowser 只起；-Stop 只停面板）
+打开乐坊.cmd / yue2_studio.ps1     起面板 + 开浏览器（-NoBrowser 只起；-Stop 只停面板）
 studio.json(.example)             配置样例（拷成 studio.json；那份已 gitignore）
-yue_studio.py / yue_studio.html   面板本体（标准库）/ 单文件前端
+yue2_studio.py / yue2_studio.html   面板本体（标准库）/ 单文件前端
 vendor/                           gsap.min.js + Flip.min.js（随仓内置，不连 CDN）
 MUSIC_NOTES.md                    实现细节与取舍（接口、状态机、踩过的坑）
 ```

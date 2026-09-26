@@ -1,12 +1,12 @@
-"""乐坊 Yue Studio服务端（纯 Python 标准库，单文件）
+"""乐坊 YuE2 Studio服务端（纯 Python 标准库，单文件）
 
 一个面板 = 一个 HTTP 服务 + 若干作业线程。跟 ComfyUI 之间**只有两条缝**：
 `studio.json` 里的 comfy_root（读它的 output\）和 127.0.0.1:8188 的 HTTP/WebSocket。
 不 import ComfyUI、不用它的 venv、也不假设它在隔壁目录。
 
-    python yue_studio.py                  # 起面板（默认 8190）
-    python yue_studio.py --port 8190
-    python yue_studio.py --print-config   # 打印解析后的配置（排查用）
+    python yue2_studio.py                  # 起面板（默认 8190）
+    python yue2_studio.py --port 8190
+    python yue2_studio.py --print-config   # 打印解析后的配置（排查用）
 
 零第三方依赖：只用标准库。前端也是单文件 + 本地 vendor\，不连 CDN。
 """
@@ -42,11 +42,11 @@ _NEW_GROUP = 0x00000200 if os.name == "nt" else 0
 
 # ---------- 面板自己的文件 ----------
 ROOT = Path(__file__).resolve().parent
-PAGE = ROOT / "yue_studio.html"
+PAGE = ROOT / "yue2_studio.html"
 VENDOR = ROOT / "vendor"          # 本地内置的前端库（gsap/Flip），由 /vendor/<name>.js 提供
 
-PANEL_PORT = int(os.environ.get("YUE_PANEL_PORT", "8190"))
-COMFY_PORT = int(os.environ.get("YUE_COMFY_PORT", "8188"))
+PANEL_PORT = int(os.environ.get("YUE2_PANEL_PORT", "8190"))
+COMFY_PORT = int(os.environ.get("YUE2_COMFY_PORT", "8188"))
 
 
 # ---------- 面板 ↔ ComfyUI 的接缝（全文件只有这一段认 ComfyUI 的位置）----------
@@ -66,8 +66,8 @@ CFG = _read_config()
 
 
 def _cfg_path(key: str, default, env: str | None = None) -> Path:
-    """环境变量 YUE_<KEY> > studio.json 的 <key> > 默认值。相对路径按**面板目录**解析。"""
-    v = os.environ.get(env or ("YUE_" + key.upper())) or CFG.get(key)
+    """环境变量 YUE2_<KEY> > studio.json 的 <key> > 默认值。相对路径按**面板目录**解析。"""
+    v = os.environ.get(env or ("YUE2_" + key.upper())) or CFG.get(key)
     if not v:
         return Path(default).resolve()
     p = Path(str(v)).expanduser()
@@ -76,7 +76,7 @@ def _cfg_path(key: str, default, env: str | None = None) -> Path:
 
 COMFY = _cfg_path("comfy_root", ROOT / "ComfyUI")
 OUT = _cfg_path("output_dir", COMFY / "output")
-SONGS = _cfg_path("songs_dir", OUT / "music", env="YUE_SONGS_DIR")
+SONGS = _cfg_path("songs_dir", OUT / "music", env="YUE2_SONGS_DIR")
 PY = _cfg_path("comfy_python", COMFY / ".venv" / "Scripts" / "python.exe")
 LOG = _cfg_path("comfy_log", COMFY / "comfy_server.log")
 LOG_ERR = LOG.parent / (LOG.name + ".err")
@@ -84,7 +84,7 @@ LOG_ERR = LOG.parent / (LOG.name + ".err")
 COMFY_CMD = [str(x) for x in (CFG.get("comfy_cmd")
                               or ["main.py", "--listen", "127.0.0.1", "--port", str(COMFY_PORT)])]
 # 面板要不要自己把 ComfyUI 拉起来（false = 只当前端，服务由外部管）
-COMFY_AUTOSTART = str(os.environ.get("YUE_COMFY_AUTOSTART", CFG.get("comfy_autostart", True))).lower() \
+COMFY_AUTOSTART = str(os.environ.get("YUE2_COMFY_AUTOSTART", CFG.get("comfy_autostart", True))).lower() \
     not in ("0", "false", "no", "")
 
 # ---------- YuE2 权重（VAE + 文本编码器都在这一个文件里）----------
@@ -120,13 +120,13 @@ def _llm_opt(key: str, env: str, default):
     return default if v in (None, "") else v
 
 
-LLM_BASE = str(_llm_opt("base_url", "YUE_LLM_BASE_URL", "")).rstrip("/")
-LLM_MODEL = str(_llm_opt("model", "YUE_LLM_MODEL", ""))
-LLM_PROXY = str(_llm_opt("proxy", "YUE_LLM_PROXY", ""))
-LLM_TIMEOUT = float(_llm_opt("timeout", "YUE_LLM_TIMEOUT", 90))
-LLM_KEY_ENV = str(_llm_opt("api_key_env", "YUE_LLM_API_KEY_ENV", "YUE_LLM_API_KEY"))
+LLM_BASE = str(_llm_opt("base_url", "YUE2_LLM_BASE_URL", "")).rstrip("/")
+LLM_MODEL = str(_llm_opt("model", "YUE2_LLM_MODEL", ""))
+LLM_PROXY = str(_llm_opt("proxy", "YUE2_LLM_PROXY", ""))
+LLM_TIMEOUT = float(_llm_opt("timeout", "YUE2_LLM_TIMEOUT", 90))
+LLM_KEY_ENV = str(_llm_opt("api_key_env", "YUE2_LLM_API_KEY_ENV", "YUE2_LLM_API_KEY"))
 # 思考型模型会先烧 token 想，给少了正文会被截掉 —— 默认给足
-LLM_MAX_TOKENS = int(_llm_opt("max_tokens", "YUE_LLM_MAX_TOKENS", 4000))
+LLM_MAX_TOKENS = int(_llm_opt("max_tokens", "YUE2_LLM_MAX_TOKENS", 4000))
 # key 只从环境变量 / Windows 注册表读：别写进 studio.json
 _LLM_OPENER = (urllib.request.build_opener(urllib.request.ProxyHandler({"http": LLM_PROXY, "https": LLM_PROXY}))
                if LLM_PROXY else urllib.request.build_opener(urllib.request.ProxyHandler({})))
@@ -156,7 +156,7 @@ def _win_env(name: str) -> str:
 
 
 def _llm_key() -> str:
-    for name in ("YUE_LLM_API_KEY", LLM_KEY_ENV):
+    for name in ("YUE2_LLM_API_KEY", LLM_KEY_ENV):
         v = os.environ.get(name) or _win_env(name)
         if v:
             return str(v)
@@ -173,7 +173,7 @@ def llm_why() -> str:
     if not LLM_BASE or not LLM_MODEL:
         return "没配大模型：studio.json 的 llm.base_url / llm.model（任何 OpenAI 兼容端点）"
     if not _llm_key():
-        return f"没读到 key：设环境变量 {LLM_KEY_ENV}（或 YUE_LLM_API_KEY）后重启面板"
+        return f"没读到 key：设环境变量 {LLM_KEY_ENV}（或 YUE2_LLM_API_KEY）后重启面板"
     return ""
 
 
@@ -1336,7 +1336,7 @@ class Handler(BaseHTTPRequestHandler):
             path = u.path
             if path in ("/", "/index.html"):
                 if not PAGE.is_file():
-                    return self._fail(404, "not_found", "找不到 yue_studio.html")
+                    return self._fail(404, "not_found", "找不到 yue2_studio.html")
                 return self._file(PAGE, "text/html; charset=utf-8")
 
             if path == "/favicon.ico":
@@ -1719,8 +1719,8 @@ def _panel_answering(port: int) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     global PANEL_PORT
-    ap = argparse.ArgumentParser(description="乐坊 Yue Studio面板（纯标准库，零第三方依赖）")
-    ap.add_argument("--port", type=int, default=None, help="面板端口（默认 8190；优先于 YUE_PANEL_PORT）")
+    ap = argparse.ArgumentParser(description="乐坊 YuE2 Studio面板（纯标准库，零第三方依赖）")
+    ap.add_argument("--port", type=int, default=None, help="面板端口（默认 8190；优先于 YUE2_PANEL_PORT）")
     ap.add_argument("--print-config", action="store_true", help="打印解析后的配置 JSON 后退出")
     a = ap.parse_args(argv)
     if a.port:
@@ -1732,7 +1732,7 @@ def main(argv: list[str] | None = None) -> int:
     if _panel_answering(PANEL_PORT):
         print(f"已经有面板在 {PANEL_PORT} 上跑了（同一端口能 bind 两个进程，答话的会是老的那个）。\n"
               f"要么先用它：http://127.0.0.1:{PANEL_PORT}\n"
-              f"要么先停掉：powershell -File yue_studio.ps1 -Stop", file=sys.stderr)
+              f"要么先停掉：powershell -File yue2_studio.ps1 -Stop", file=sys.stderr)
         return 1
     if not COMFY.is_dir():
         # 不因为"找不到 ComfyUI"就拒绝启动：起得来，状态栏才能告诉你它没在线
@@ -1741,7 +1741,7 @@ def main(argv: list[str] | None = None) -> int:
     online, version = _comfy_stats(ttl=0)
     srv = ThreadingHTTPServer(("127.0.0.1", PANEL_PORT), Handler)
     srv.daemon_threads = True
-    print(f"乐坊 Yue Studio: http://127.0.0.1:{PANEL_PORT}", flush=True)
+    print(f"乐坊 YuE2 Studio: http://127.0.0.1:{PANEL_PORT}", flush=True)
     print(f"  comfy_root : {COMFY}", flush=True)
     print(f"  songs_dir  : {SONGS}", flush=True)
     print("  ComfyUI    : " + (f"在线 v{version}  http://127.0.0.1:{COMFY_PORT}" if online

@@ -1,5 +1,5 @@
 {
-  "_说明": "拷成 studio.json 再用（那份已 gitignore）。相对路径按本目录解析；环境变量 YUE_COMFY_ROOT 等优先级更高。",
+  "_说明": "拷成 studio.json 再用（那份已 gitignore）。相对路径按本目录解析；环境变量 YUE2_COMFY_ROOT 等优先级更高。",
   "comfy_root": "../ComfyUI",
   "comfy_autostart": true,
   "_songs说明": "出歌产物目录。默认 <comfy_root>\\output\\music；想跟别的脚本共用一个文件夹就显式写这里。",
@@ -44,7 +44,7 @@
   "llm": {
     "base_url": "",
     "model": "",
-    "api_key_env": "YUE_LLM_API_KEY",
+    "api_key_env": "YUE2_LLM_API_KEY",
     "proxy": "",
     "timeout": 90,
     "max_tokens": 4000
