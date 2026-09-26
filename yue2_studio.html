@@ -219,6 +219,11 @@
        margin:14px 0 4px}
   .lrcTag:first-child{margin-top:0}
   .lrcLine{font-size:14.5px;line-height:2;color:var(--fg)}
+  /* 空状态（纯音乐 / 没存参数）：不摆盒子，直接在歌词页正中放一行字（用户口径：不要框） */
+  #lyricsBox.bare{display:flex;align-items:center;justify-content:center;
+       padding:0;box-shadow:none;background:none}
+  #lyricsBox.bare .empty-note{padding:0;box-shadow:none;background:none;
+       text-align:center;font-size:12.5px}
   /* 属性：盒子**贴着行数长**，不留一大片空的（行多了整页滚，不是盒子内滚） */
   #viewMeta{flex:1;min-height:0;overflow:auto}
   #viewMeta .fld{display:block;margin-bottom:0}
@@ -1447,6 +1452,7 @@ function renderLyrics(text, meta){
   box.innerHTML = '';
   const lines = String(text || '').split('\n').map(s => s.trim()).filter(Boolean);
   if(!lines.length){
+    box.classList.add('bare');                        // 空状态：无框、文字居中（别摆盒子）
     const d = document.createElement('div');
     d.className = 'empty-note';
     // 纯音乐是**故意**没有歌词的（参数在、风格里带「纯音乐」）——别冤枉成"没存参数"
@@ -1456,6 +1462,7 @@ function renderLyrics(text, meta){
     box.appendChild(d);
     return;
   }
+  box.classList.remove('bare');                       // 有歌词 → 恢复原来的盒子
   lines.forEach(t => {
     const d = document.createElement('div');
     d.className = /^\[.+\]$/.test(t) ? 'lrcTag' : 'lrcLine';   // [Verse] / [Chorus] 当小标题
