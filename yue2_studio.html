@@ -1442,14 +1442,17 @@ $('btnCopy').onclick = async () => {
    歌词、风格、时长上限、步数、种子、乐谱规划、生成时间、耗时、峰值显存、产物文件名。
    老产物（比这一版面板早生成的）没这份 json → 只显示文件本身的信息，并说明为什么。 */
 let infoName = null;
-function renderLyrics(text){
+function renderLyrics(text, meta){
   const box = $('lyricsBox');
   box.innerHTML = '';
   const lines = String(text || '').split('\n').map(s => s.trim()).filter(Boolean);
   if(!lines.length){
     const d = document.createElement('div');
     d.className = 'empty-note';
-    d.textContent = '这一页没有歌词（这首歌没存参数，或者是纯乐谱条目）。';
+    // 纯音乐是**故意**没有歌词的（参数在、风格里带「纯音乐」）——别冤枉成"没存参数"
+    d.textContent = (meta && meta.style && /纯音乐/.test(String(meta.style)))
+      ? '纯音乐 —— 这一首没有歌词。'
+      : '这一页没有歌词（这首歌没存参数，或者是纯乐谱条目）。';
     box.appendChild(d);
     return;
   }
@@ -1517,7 +1520,7 @@ async function loadInfo(base){
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
     if(infoName !== base) return;              // 这中间切走了，别把新页覆盖掉
-    renderLyrics(j.meta && j.meta.lyrics);
+    renderLyrics(j.meta && j.meta.lyrics, j.meta);
     renderMeta(j.meta, base);
   }catch(e){
     setMsg('参数读不出来（' + base + '）：' + e.message);
@@ -1774,7 +1777,10 @@ async function submit(kind){
   const style = $('style').value.trim();
   const lyrics = LYR.value.trim();
   if(!style){ setMsg('风格不能为空'); $('style').focus(); return; }
-  if(!lyrics){ setMsg('歌词不能为空'); LYR.focus(); return; }
+  // 纯音乐（风格里带「纯音乐」）没有歌词 —— 别拦，拦了就成了"我让他生成纯音乐他说歌词不能为空"
+  if(!lyrics && !/纯音乐/.test(style)){
+    setMsg('歌词不能为空（出纯音乐就把人声点成「无人声（纯音乐）」）'); LYR.focus(); return;
+  }
   const body = {style, lyrics, seed: stSeed.get(), mode: segMode.get(), name: $('songName').value.trim()};
   if(kind === 'song'){
     body.seconds = stSec.get();

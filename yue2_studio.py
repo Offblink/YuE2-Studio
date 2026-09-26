@@ -1113,8 +1113,8 @@ def _parse_params(body: dict, plan: bool = False) -> dict:
     label = re.sub(r"\s+", " ", str(body.get("name") or "").strip())[:60]
     if not style:
         raise ValueError("风格不能为空")
-    if not lyrics.strip():
-        raise ValueError("歌词不能为空")
+    if not lyrics.strip() and "纯音乐" not in style:
+        raise ValueError("歌词不能为空（出纯音乐就把人声点成「无人声（纯音乐）」，歌词不用填）")
     mode = str(body.get("mode") or "full").strip().lower()
     if mode not in ("full", "melody", "off"):
         raise ValueError("mode 只能是 full / melody / off")
