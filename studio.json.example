@@ -1,0 +1,52 @@
+{
+  "_说明": "拷成 studio.json 再用（那份已 gitignore）。相对路径按本目录解析；环境变量 YUE_COMFY_ROOT 等优先级更高。",
+  "comfy_root": "../ComfyUI",
+  "comfy_autostart": true,
+  "_songs说明": "出歌产物目录。默认 <comfy_root>\\output\\music；想跟别的脚本共用一个文件夹就显式写这里。",
+  "songs_dir": "",
+  "_presets说明": "创作页的四组预设（组名 = 行标签，项 = 最终风格句的一个片段；不配就用内置那套中文预设）。",
+  "presets": {
+    "曲风": [
+      "民谣",
+      "流行",
+      "城市流行",
+      "爵士",
+      "摇滚",
+      "电子",
+      "古风",
+      "环境"
+    ],
+    "人声": [
+      "女声",
+      "男声",
+      "双人合唱",
+      "童声",
+      "无人声（纯音乐）"
+    ],
+    "乐器": [
+      "钢琴",
+      "木吉他",
+      "弦乐",
+      "合成器",
+      "鼓组",
+      "中国民乐"
+    ],
+    "BPM": [
+      "68 BPM",
+      "76 BPM",
+      "88 BPM",
+      "96 BPM",
+      "108 BPM",
+      "120 BPM"
+    ]
+  },
+  "_llm说明": "可选：「自动生成」那一格（一句话 → 歌名 + 歌词 + 参数）用的大模型，任何 OpenAI 兼容端点都行（POST <base_url>/chat/completions）。api_key 不写在这里：从环境变量 api_key_env 读（读不到再去 Windows 注册表里找同名用户变量）。不配就禁用这一格，出歌不受影响；配了的话提示词会发给这个服务商。",
+  "llm": {
+    "base_url": "",
+    "model": "",
+    "api_key_env": "YUE_LLM_API_KEY",
+    "proxy": "",
+    "timeout": 90,
+    "max_tokens": 4000
+  }
+}

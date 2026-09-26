@@ -1,0 +1,11 @@
+# 运行期日志
+studio.log
+studio.log.err
+__pycache__/
+*.pyc
+
+# 本机快捷方式
+*.lnk
+
+# 本机配置（指向哪份 ComfyUI）：提交的是 studio.json.example
+studio.json
