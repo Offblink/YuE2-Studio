@@ -175,6 +175,12 @@
   /* 新歌进来但浏览器不让自动播：让「播放」自己招一下手 */
   .pbtn.attn{color:#fff;background:linear-gradient(145deg,#7b88e6,#5a68d0);
        animation:attn 1.15s ease-in-out infinite}
+  /* 底色已经是强调色的两种态（.on 正在放 / .attn 招手）：悬停必须保住**白**图标 ——
+     accent 图标压在 accent 底上同色相消，悬停图标就"没了"（用户实测）。
+     反馈改走「底色提亮 + 阴影加重」，跟 .pill.on 的悬停一个套路。 */
+  .pbtn.on:not(:disabled):hover, .pbtn.attn:not(:disabled):hover{color:#fff;
+       background:linear-gradient(145deg,#8590ea,#616fd8);
+       box-shadow:0 0 0 2px rgba(108,122,224,.32),7px 7px 16px rgba(108,122,224,.48),-5px -5px 12px var(--sh-l)}
   @keyframes attn{
     0%,100%{box-shadow:0 0 0 2px rgba(108,122,224,.3),5px 5px 12px rgba(108,122,224,.4),-4px -4px 10px var(--sh-l)}
     50%    {box-shadow:0 0 0 6px rgba(108,122,224,.18),7px 7px 18px rgba(108,122,224,.55),-5px -5px 12px var(--sh-l)}
@@ -418,7 +424,6 @@
           <div id="abcBox" class="ph">（还没有乐谱）</div>
           <div class="row">
             <button class="pill" id="btnCopy" disabled>复制</button>
-            <button class="pill" id="btnDlAbc" disabled>下载</button>
             <span class="grow"></span>
             <span class="dim" id="abcLen" style="font-size:11.5px;color:var(--faint)"></span>
           </div>
@@ -1406,7 +1411,6 @@ function showAbc(text, from, name){
   $('abcFrom').textContent = abcText ? from : '';
   $('abcEmpty').style.display = abcText ? 'none' : 'block';
   $('btnCopy').disabled = !abcText;
-  $('btnDlAbc').disabled = !abcText;
   $('abcLen').textContent = abcText
     ? (abcText.split('\n').length + ' 行 · ' + abcText.length + ' 字符') : '';
   updateSwitch();
@@ -1431,16 +1435,6 @@ $('btnCopy').onclick = async () => {
     const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
     setMsg('复制不了（浏览器不给剪贴板权限），已选中全文 —— 按 Ctrl+C');
   }
-};
-$('btnDlAbc').onclick = () => {
-  if(!abcText) return;
-  const name = abcName || ('plan_' + Date.now() + '.abc');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([abcText], {type: 'text/plain;charset=utf-8'}));
-  a.download = name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  setMsg('已开始下载 ' + name, true);
 };
 
 /* ================= 歌词 / 参数页（每首歌自己那一页） =================
